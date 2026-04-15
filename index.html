@@ -267,11 +267,26 @@
       font-weight: 500;
       color: rgba(235,238,245,0.95);
     }
+    .fc-date-wrap { position: relative; display: inline-flex; }
     .fc-date {
       font-family: 'Space Mono', monospace;
       font-size: 10px;
       letter-spacing: .07em;
       color: rgba(235,238,245,0.5);
+      background: transparent;
+      border: none;
+      padding: 2px 4px;
+      margin: -2px -4px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background .15s ease, color .15s ease;
+    }
+    .fc-date:hover { background: rgba(235,238,245,0.08); color: rgba(235,238,245,0.85); }
+    .fc-date-input {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      opacity: 0; pointer-events: none;
+      border: none; background: transparent;
     }
     .fc-price {
       font-family: 'Inter', sans-serif;
@@ -685,6 +700,43 @@
         };
       }
 
+      function priceForDate(basePrice, dateStr) {
+        let h = 2166136261;
+        for (let i=0; i<dateStr.length; i++) { h ^= dateStr.charCodeAt(i); h = Math.imul(h, 16777619); }
+        const variance = (((h >>> 0) % 41) - 20) / 100;
+        return Math.round(basePrice * (1 + variance));
+      }
+      function tweenNumber(el, from, to, duration, formatter) {
+        if (el._tweenRaf) cancelAnimationFrame(el._tweenRaf);
+        const start = performance.now();
+        function step(now) {
+          const p = Math.min(1, (now - start) / duration);
+          const eased = 1 - Math.pow(1 - p, 3);
+          const val = Math.round(from + (to - from) * eased);
+          el.textContent = formatter(val);
+          if (p < 1) el._tweenRaf = requestAnimationFrame(step);
+          else el._tweenRaf = null;
+        }
+        el._tweenRaf = requestAnimationFrame(step);
+      }
+      function recalcTotal(animate) {
+        const totalEl = document.getElementById('side-total');
+        const cards = document.querySelectorAll('.flight-card:not(.placeholder)');
+        let total = 0;
+        cards.forEach(c => total += Number(c.dataset.currentPrice || 0));
+        const prev = Number(totalEl.dataset.value || 0);
+        totalEl.dataset.value = total;
+        if (total > 0) {
+          totalEl.classList.remove('hidden');
+          if (animate) tweenNumber(totalEl, prev, total, 500, v => '$' + v.toLocaleString());
+          else totalEl.textContent = '$' + total.toLocaleString();
+        } else {
+          totalEl.textContent = '—';
+          totalEl.classList.add('hidden');
+          totalEl.dataset.value = 0;
+        }
+      }
+
       /* Render flight cards in the side panel */
       function renderFlights() {
         const list   = document.getElementById('cards-list');
@@ -744,7 +796,10 @@
               <div class="fc-row fc-row-price fc-reveal">
                 <span class="fc-time-group">
                   <span class="fc-time"></span>
-                  <span class="fc-date"></span>
+                  <span class="fc-date-wrap">
+                    <button type="button" class="fc-date"></button>
+                    <input type="date" class="fc-date-input" tabindex="-1" aria-hidden="true" />
+                  </span>
                 </span>
                 <span class="fc-price"></span>
               </div>
@@ -764,9 +819,43 @@
             card.querySelector('.fc-airline').textContent = `${e.flight.airline.name} — ${e.flight.airline.code} ${e.flight.flightNum}`;
             card.querySelector('.fc-dur').textContent = durStr;
             card.querySelector('.fc-time').textContent = e.flight.takeoff;
-            const flightDate = new Date(Date.now() + (i + 1) * 7 * 86400000);
-            card.querySelector('.fc-date').textContent = flightDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            card.querySelector('.fc-price').textContent = `$${e.flight.price.toLocaleString()}`;
+            const dateBtn   = card.querySelector('.fc-date');
+            const dateInput = card.querySelector('.fc-date-input');
+            const priceEl   = card.querySelector('.fc-price');
+            if (!card.dataset.flightDate) {
+              const d = new Date(Date.now() + (i + 1) * 7 * 86400000);
+              card.dataset.flightDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            }
+            const formatDate = (iso) => {
+              const [y,m,d] = iso.split('-').map(Number);
+              return new Date(y, m-1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            };
+            dateInput.value = card.dataset.flightDate;
+            dateBtn.textContent = formatDate(card.dataset.flightDate);
+
+            card.dataset.basePrice = String(e.flight.price);
+            const initialPrice = priceForDate(e.flight.price, card.dataset.flightDate);
+            card.dataset.currentPrice = String(initialPrice);
+            priceEl.textContent = `$${initialPrice.toLocaleString()}`;
+
+            if (!dateBtn.dataset.wired) {
+              dateBtn.dataset.wired = '1';
+              dateBtn.addEventListener('click', () => {
+                if (typeof dateInput.showPicker === 'function') dateInput.showPicker();
+                else { dateInput.style.pointerEvents='auto'; dateInput.focus(); dateInput.click(); }
+              });
+              dateInput.addEventListener('change', () => {
+                if (!dateInput.value) return;
+                card.dataset.flightDate = dateInput.value;
+                dateBtn.textContent = formatDate(dateInput.value);
+                const base = Number(card.dataset.basePrice);
+                const prev = Number(card.dataset.currentPrice);
+                const next = priceForDate(base, dateInput.value);
+                card.dataset.currentPrice = String(next);
+                tweenNumber(priceEl, prev, next, 500, v => '$' + v.toLocaleString());
+                recalcTotal(true);
+              });
+            }
           } else {
             card.classList.add('placeholder');
           }
@@ -776,14 +865,7 @@
 
         existing.forEach((el, key) => { if (!wantedKeys.has(key)) el.remove(); });
 
-        const total = entries.reduce((s,e)=>s+(e.flight ? e.flight.price : 0), 0);
-        if (total > 0) {
-          totalEl.textContent = '$' + total.toLocaleString();
-          totalEl.classList.remove('hidden');
-        } else {
-          totalEl.textContent = '—';
-          totalEl.classList.add('hidden');
-        }
+        recalcTotal(false);
       }
 
       /* Search UI wiring */
