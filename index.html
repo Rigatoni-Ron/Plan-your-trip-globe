@@ -899,7 +899,7 @@
           const dpr    = devicePixelRatio;
           const sc     = Math.min(W, H) * 0.33;
           const ang    = INIT_Y + t;
-          const hoverR = 60 * dpr;
+          const hoverR = 38 * dpr;
           function rotate(v) { return rX(rY(v, ang), INIT_X); }
           const rTor  = rotate(toronto);
           const torPt = orth(rTor, sc);
@@ -926,7 +926,7 @@
             if (mouseX > 0 && dist < hoverR * 3.2) {
               const env  = Math.max(0, 1 - dist / (hoverR * 2.8));
               const freq = 0.044 / dpr;
-              const amp  = 18 * dpr * env;
+              const amp  = 28 * dpr * env;
               const w1   = Math.sin(dist * freq - t * 7.2);
               const w2   = Math.sin(dist * freq * 1.65 - t * 5.4 + 1.5) * 0.55;
               const w3   = Math.sin(dist * freq * 0.55 - t * 3.0 + 0.8) * 0.30;
