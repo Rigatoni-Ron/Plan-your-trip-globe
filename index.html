@@ -256,11 +256,22 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .fc-time-group {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
     .fc-time {
       font-family: 'Inter', sans-serif;
       font-size: 13px;
       font-weight: 500;
       color: rgba(235,238,245,0.95);
+    }
+    .fc-date {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: .07em;
+      color: rgba(235,238,245,0.5);
     }
     .fc-price {
       font-family: 'Inter', sans-serif;
@@ -330,8 +341,8 @@
       animation: searchPulse 4.5s ease-in-out infinite;
     }
     @keyframes searchPulse {
-      0%, 100% { box-shadow: 0 0 10px 0 rgba(15,20,40,0.14); border-color: rgba(15,20,40,0.28); }
-      50%      { box-shadow: 0 0 20px 4px rgba(15,20,40,0.28); border-color: rgba(15,20,40,0.5); }
+      0%, 100% { box-shadow: 0 0 10px 0 rgba(15,20,40,0.14); border-color: rgba(15,20,40,0.28); transform: scale(1);    }
+      50%      { box-shadow: 0 0 20px 4px rgba(15,20,40,0.28); border-color: rgba(15,20,40,0.5);  transform: scale(1.015); }
     }
     #globe-search-input {
       flex:1; background:none; border:none; outline:none;
@@ -731,7 +742,10 @@
                 <span class="fc-sub fc-dur"></span>
               </div>
               <div class="fc-row fc-row-price fc-reveal">
-                <span class="fc-time"></span>
+                <span class="fc-time-group">
+                  <span class="fc-time"></span>
+                  <span class="fc-date"></span>
+                </span>
                 <span class="fc-price"></span>
               </div>
             `;
@@ -750,6 +764,8 @@
             card.querySelector('.fc-airline').textContent = `${e.flight.airline.name} — ${e.flight.airline.code} ${e.flight.flightNum}`;
             card.querySelector('.fc-dur').textContent = durStr;
             card.querySelector('.fc-time').textContent = e.flight.takeoff;
+            const flightDate = new Date(Date.now() + (i + 1) * 7 * 86400000);
+            card.querySelector('.fc-date').textContent = flightDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             card.querySelector('.fc-price').textContent = `$${e.flight.price.toLocaleString()}`;
           } else {
             card.classList.add('placeholder');
