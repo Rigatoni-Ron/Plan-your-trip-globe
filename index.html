@@ -292,11 +292,61 @@
     }
     .fc-date:hover { color: rgba(235,238,245,0.9); }
     .fc-date:hover::after { transform: scaleX(1); }
-    .fc-date-input {
-      position: absolute; inset: 0;
-      width: 100%; height: 100%;
-      opacity: 0; pointer-events: none;
-      border: none; background: transparent;
+    /* Custom date picker */
+    .cal-pop {
+      position: fixed;
+      z-index: 100;
+      width: 244px;
+      padding: 14px;
+      background: rgba(245,247,250,0.98);
+      border: 1px solid rgba(15,20,40,0.18);
+      border-radius: 10px;
+      box-shadow: 0 14px 36px -12px rgba(15,20,40,0.3);
+      backdrop-filter: blur(14px);
+      font-family: 'Inter', sans-serif;
+      color: rgba(15,20,40,0.85);
+      opacity: 0;
+      transform: translateY(-4px) scale(.98);
+      pointer-events: none;
+      transition: opacity .18s ease, transform .22s cubic-bezier(.22,1,.36,1);
+    }
+    .cal-pop.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+    .cal-head {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .cal-title { font-size: 12px; font-weight: 500; letter-spacing: .01em; }
+    .cal-nav { display: flex; gap: 2px; }
+    .cal-nav button {
+      background: transparent; border: none; color: inherit; cursor: pointer;
+      padding: 4px 8px; border-radius: 5px; line-height: 1; font-size: 14px;
+      transition: background .15s ease;
+    }
+    .cal-nav button:hover { background: rgba(15,20,40,0.08); }
+    .cal-grid {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+    }
+    .cal-dow {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px; letter-spacing: .06em;
+      text-align: center; padding: 4px 0;
+      color: rgba(15,20,40,0.4);
+    }
+    .cal-day {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      text-align: center; padding: 6px 0;
+      border: none; background: transparent; cursor: pointer;
+      color: rgba(15,20,40,0.78);
+      border-radius: 5px;
+      transition: background .15s ease, color .15s ease;
+    }
+    .cal-day:hover { background: rgba(15,20,40,0.08); }
+    .cal-day.other { color: rgba(15,20,40,0.25); }
+    .cal-day.today { box-shadow: inset 0 0 0 1px rgba(15,20,40,0.35); }
+    .cal-day.selected, .cal-day.selected:hover {
+      background: rgba(42,52,78,0.92);
+      color: rgba(235,238,245,0.95);
     }
     .fc-price {
       font-family: 'Inter', sans-serif;
@@ -710,6 +760,106 @@
         };
       }
 
+      /* Custom date picker singleton */
+      (function setupCalendar() {
+        const cal = document.createElement('div');
+        cal.className = 'cal-pop';
+        cal.innerHTML = `
+          <div class="cal-head">
+            <span class="cal-title"></span>
+            <span class="cal-nav">
+              <button type="button" class="cal-prev" aria-label="Previous month">‹</button>
+              <button type="button" class="cal-next" aria-label="Next month">›</button>
+            </span>
+          </div>
+          <div class="cal-grid cal-dows"></div>
+          <div class="cal-grid cal-days"></div>
+        `;
+        document.body.appendChild(cal);
+
+        const titleEl = cal.querySelector('.cal-title');
+        const dowsEl  = cal.querySelector('.cal-dows');
+        const daysEl  = cal.querySelector('.cal-days');
+        ['S','M','T','W','T','F','S'].forEach(d => {
+          const el = document.createElement('span');
+          el.className = 'cal-dow'; el.textContent = d;
+          dowsEl.appendChild(el);
+        });
+
+        const isoFromDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        const dateFromISO = iso => { const [y,m,d] = iso.split('-').map(Number); return new Date(y, m-1, d); };
+
+        let viewYear, viewMonth, selectedISO, callback, anchor;
+
+        function render() {
+          const first    = new Date(viewYear, viewMonth, 1);
+          const lastDay  = new Date(viewYear, viewMonth+1, 0).getDate();
+          const startDow = first.getDay();
+          const todayISO = isoFromDate(new Date());
+          titleEl.textContent = first.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+          daysEl.innerHTML = '';
+
+          const prevLast = new Date(viewYear, viewMonth, 0).getDate();
+          for (let i=startDow-1; i>=0; i--) addDay(new Date(viewYear, viewMonth-1, prevLast - i), true);
+          for (let d=1; d<=lastDay; d++)    addDay(new Date(viewYear, viewMonth,   d), false);
+          const trailing = (7 - ((startDow + lastDay) % 7)) % 7;
+          for (let d=1; d<=trailing; d++)   addDay(new Date(viewYear, viewMonth+1, d), true);
+
+          function addDay(dt, other) {
+            const iso = isoFromDate(dt);
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'cal-day' + (other?' other':'') + (iso===todayISO?' today':'') + (iso===selectedISO?' selected':'');
+            btn.textContent = dt.getDate();
+            btn.addEventListener('click', () => { callback(iso); close(); });
+            daysEl.appendChild(btn);
+          }
+        }
+
+        cal.querySelector('.cal-prev').addEventListener('click', () => { viewMonth--; if (viewMonth<0){viewMonth=11;viewYear--;} render(); reposition(); });
+        cal.querySelector('.cal-next').addEventListener('click', () => { viewMonth++; if (viewMonth>11){viewMonth=0;viewYear++;} render(); reposition(); });
+
+        function reposition() {
+          if (!anchor) return;
+          const r = anchor.getBoundingClientRect();
+          const w = cal.offsetWidth, h = cal.offsetHeight;
+          let left = r.left;
+          let top  = r.bottom + 6;
+          if (left + w > window.innerWidth - 8) left = window.innerWidth - w - 8;
+          if (left < 8) left = 8;
+          if (top + h > window.innerHeight - 8) top = r.top - h - 6;
+          cal.style.left = left + 'px';
+          cal.style.top  = top + 'px';
+        }
+
+        function close() {
+          cal.classList.remove('open');
+          anchor = null;
+          document.removeEventListener('mousedown', onDown, true);
+          document.removeEventListener('keydown', onKey);
+          window.removeEventListener('resize', reposition);
+        }
+        function onDown(e) { if (!cal.contains(e.target) && e.target !== anchor) close(); }
+        function onKey(e)  { if (e.key === 'Escape') close(); }
+
+        window.openCalendar = function(target, currentISO, onPick) {
+          callback = onPick;
+          selectedISO = currentISO;
+          anchor = target;
+          const dt = dateFromISO(currentISO);
+          viewYear = dt.getFullYear();
+          viewMonth = dt.getMonth();
+          render();
+          cal.classList.add('open');
+          reposition();
+          setTimeout(() => {
+            document.addEventListener('mousedown', onDown, true);
+            document.addEventListener('keydown', onKey);
+            window.addEventListener('resize', reposition);
+          }, 0);
+        };
+      })();
+
       function priceForDate(basePrice, dateStr) {
         let h = 2166136261;
         for (let i=0; i<dateStr.length; i++) { h ^= dateStr.charCodeAt(i); h = Math.imul(h, 16777619); }
@@ -806,10 +956,7 @@
               <div class="fc-row fc-row-price fc-reveal">
                 <span class="fc-time-group">
                   <span class="fc-time"></span>
-                  <span class="fc-date-wrap">
-                    <button type="button" class="fc-date"></button>
-                    <input type="date" class="fc-date-input" tabindex="-1" aria-hidden="true" />
-                  </span>
+                  <button type="button" class="fc-date"></button>
                 </span>
                 <span class="fc-price"></span>
               </div>
@@ -829,9 +976,8 @@
             card.querySelector('.fc-airline').textContent = `${e.flight.airline.name} — ${e.flight.airline.code} ${e.flight.flightNum}`;
             card.querySelector('.fc-dur').textContent = durStr;
             card.querySelector('.fc-time').textContent = e.flight.takeoff;
-            const dateBtn   = card.querySelector('.fc-date');
-            const dateInput = card.querySelector('.fc-date-input');
-            const priceEl   = card.querySelector('.fc-price');
+            const dateBtn = card.querySelector('.fc-date');
+            const priceEl = card.querySelector('.fc-price');
             if (!card.dataset.flightDate) {
               const d = new Date(Date.now() + (i + 1) * 7 * 86400000);
               card.dataset.flightDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -840,7 +986,6 @@
               const [y,m,d] = iso.split('-').map(Number);
               return new Date(y, m-1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             };
-            dateInput.value = card.dataset.flightDate;
             dateBtn.textContent = formatDate(card.dataset.flightDate);
 
             card.dataset.basePrice = String(e.flight.price);
@@ -851,19 +996,16 @@
             if (!dateBtn.dataset.wired) {
               dateBtn.dataset.wired = '1';
               dateBtn.addEventListener('click', () => {
-                if (typeof dateInput.showPicker === 'function') dateInput.showPicker();
-                else { dateInput.style.pointerEvents='auto'; dateInput.focus(); dateInput.click(); }
-              });
-              dateInput.addEventListener('change', () => {
-                if (!dateInput.value) return;
-                card.dataset.flightDate = dateInput.value;
-                dateBtn.textContent = formatDate(dateInput.value);
-                const base = Number(card.dataset.basePrice);
-                const prev = Number(card.dataset.currentPrice);
-                const next = priceForDate(base, dateInput.value);
-                card.dataset.currentPrice = String(next);
-                tweenNumber(priceEl, prev, next, 500, v => '$' + v.toLocaleString());
-                recalcTotal(true);
+                window.openCalendar(dateBtn, card.dataset.flightDate, (iso) => {
+                  card.dataset.flightDate = iso;
+                  dateBtn.textContent = formatDate(iso);
+                  const base = Number(card.dataset.basePrice);
+                  const prev = Number(card.dataset.currentPrice);
+                  const next = priceForDate(base, iso);
+                  card.dataset.currentPrice = String(next);
+                  tweenNumber(priceEl, prev, next, 500, v => '$' + v.toLocaleString());
+                  recalcTotal(true);
+                });
               });
             }
           } else {
