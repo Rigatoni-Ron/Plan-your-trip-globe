@@ -236,7 +236,7 @@
     .fc-row.fc-row-price {
       margin: 4px -14px 0;
       padding: 10px 14px 0;
-      border-top: 1px solid rgba(235,237,241,0.6);
+      border-top: 1px solid #E2E5E9;
     }
     .fc-city {
       font-family: 'Inter', sans-serif;
@@ -1017,7 +1017,7 @@
 
         existing.forEach((el, key) => { if (!wantedKeys.has(key)) el.remove(); });
 
-        recalcTotal(false);
+        recalcTotal(true);
       }
 
       /* Search UI wiring */
