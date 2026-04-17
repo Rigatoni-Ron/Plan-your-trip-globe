@@ -202,6 +202,7 @@
       overflow: hidden;
     }
     .fc-to {
+      min-width: 0;
       transition: opacity .4s ease, transform .5s cubic-bezier(.22,1,.36,1);
     }
     .flight-card.placeholder .fc-to {
@@ -354,6 +355,43 @@
       font-weight: 500;
       color: rgba(235,238,245,0.95);
       text-align: right;
+    }
+
+    /* Clear button on flight card */
+    .fc-clear {
+      width: 0;
+      min-width: 0;
+      height: 22px;
+      border-radius: 6px;
+      border: none;
+      background: rgba(255,255,255,0.08);
+      color: rgba(235,238,245,0.5);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      overflow: hidden;
+      flex-shrink: 0;
+      padding: 0;
+      transition: width .25s cubic-bezier(.22,1,.36,1), opacity .2s ease, background .15s ease, color .15s ease, padding .25s cubic-bezier(.22,1,.36,1);
+      pointer-events: none;
+    }
+    .fc-clear svg {
+      flex-shrink: 0;
+    }
+    .fc-clear {
+      align-self: center;
+    }
+    .flight-card:not(.placeholder):hover .fc-clear {
+      width: 22px;
+      padding: 0 5px;
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .fc-clear:hover {
+      background: rgba(220,60,60,0.25);
+      color: rgba(255,180,180,0.95);
     }
 
     /* Total cost footer */
@@ -948,6 +986,9 @@
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/><path d="M6 12h16"/></svg>
                 </span>
                 <span class="fc-city fc-to"></span>
+                <button type="button" class="fc-clear" aria-label="Remove leg">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+                </button>
               </div>
               <div class="fc-row fc-reveal">
                 <span class="fc-sub fc-airline"></span>
@@ -1006,6 +1047,21 @@
                   tweenNumber(priceEl, prev, next, 500, v => '$' + v.toLocaleString());
                   recalcTotal(true);
                 });
+              });
+            }
+
+            /* Clear button — remove this leg's destination */
+            card.dataset.toKey = e.to.key;
+            const clearBtn = card.querySelector('.fc-clear');
+            if (!clearBtn.dataset.wired) {
+              clearBtn.dataset.wired = '1';
+              clearBtn.addEventListener('click', () => {
+                const toKey = card.dataset.toKey;
+                const idx = trips.findIndex(tr => tr.key === toKey);
+                if (idx !== -1) {
+                  trips.splice(idx, 1);
+                  renderFlights();
+                }
               });
             }
           } else {
