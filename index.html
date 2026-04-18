@@ -187,6 +187,17 @@
       from { opacity:0; transform:translateY(8px); }
       to   { opacity:1; transform:translateY(0); }
     }
+    .flight-card.removing {
+      overflow: hidden;
+      animation: none;
+      transition: opacity .25s ease, transform .25s ease, max-height .35s cubic-bezier(.4,0,.2,1) .05s, margin-bottom .35s cubic-bezier(.4,0,.2,1) .05s, padding .35s cubic-bezier(.4,0,.2,1) .05s;
+      opacity: 0;
+      transform: scale(0.96);
+      max-height: 0 !important;
+      margin-bottom: -8px;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
     .fc-row {
       display: flex;
       align-items: baseline;
@@ -370,22 +381,22 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      align-self: center;
       opacity: 0;
       overflow: hidden;
       flex-shrink: 0;
       padding: 0;
-      transition: width .25s cubic-bezier(.22,1,.36,1), opacity .2s ease, background .15s ease, color .15s ease, padding .25s cubic-bezier(.22,1,.36,1);
+      margin-left: -10px; /* collapse the flex gap */
+      transition: width .25s cubic-bezier(.22,1,.36,1), opacity .2s ease, background .15s ease, color .15s ease, padding .25s cubic-bezier(.22,1,.36,1), margin-left .25s cubic-bezier(.22,1,.36,1);
       pointer-events: none;
     }
     .fc-clear svg {
       flex-shrink: 0;
     }
-    .fc-clear {
-      align-self: center;
-    }
     .flight-card:not(.placeholder):hover .fc-clear {
       width: 22px;
       padding: 0 5px;
+      margin-left: 0;
       opacity: 1;
       pointer-events: auto;
     }
@@ -784,22 +795,31 @@
       }
 
       /* Deterministic "flight" data for a leg */
-      const AIRLINES = [
-        { name:'Air Canada',        code:'AC' },
-        { name:'Delta',             code:'DL' },
-        { name:'United',            code:'UA' },
-        { name:'American',          code:'AA' },
-        { name:'Lufthansa',         code:'LH' },
-        { name:'British Airways',   code:'BA' },
-        { name:'Air France',        code:'AF' },
-        { name:'KLM',               code:'KL' },
-        { name:'Emirates',          code:'EK' },
-        { name:'Qatar Airways',     code:'QR' },
-        { name:'Singapore Airlines',code:'SQ' },
-        { name:'ANA',               code:'NH' },
-        { name:'Turkish Airlines',  code:'TK' },
-        { name:'Iberia',            code:'IB' },
-      ];
+      const AIRLINE_POOLS = {
+        canada:  [{name:'Air Canada',code:'AC'},{name:'WestJet',code:'WS'}],
+        usa:     [{name:'Delta',code:'DL'},{name:'United',code:'UA'},{name:'American',code:'AA'},{name:'JetBlue',code:'B6'}],
+        latam:   [{name:'LATAM',code:'LA'},{name:'Avianca',code:'AV'},{name:'Aeromexico',code:'AM'}],
+        europe:  [{name:'Lufthansa',code:'LH'},{name:'British Airways',code:'BA'},{name:'Air France',code:'AF'},{name:'KLM',code:'KL'},{name:'Iberia',code:'IB'}],
+        asia:    [{name:'Singapore Airlines',code:'SQ'},{name:'ANA',code:'NH'},{name:'Korean Air',code:'KE'},{name:'Cathay Pacific',code:'CX'}],
+        mideast: [{name:'Emirates',code:'EK'},{name:'Qatar Airways',code:'QR'},{name:'Turkish Airlines',code:'TK'}],
+        africa:  [{name:'Ethiopian Airlines',code:'ET'},{name:'South African Airways',code:'SA'},{name:'Kenya Airways',code:'KQ'}],
+        oceania: [{name:'Qantas',code:'QF'},{name:'Air New Zealand',code:'NZ'}],
+      };
+      function regionOf(v) {
+        const lat = Math.asin(v[1]) * 180 / Math.PI;
+        const lon = Math.atan2(v[2], v[0]) * 180 / Math.PI;
+        if (lat > 41 && lon < -50 && lon > -145) return 'canada';
+        if (lat > 15 && lat <= 41 && lon < -50 && lon > -130) return 'usa';
+        if (lat > 60 && lon < -10 && lon > -180) return 'canada'; // Alaska/northern
+        if (lat <= 15 && lat > -60 && lon < -30 && lon > -120) return 'latam';
+        if (lon >= -30 && lon < -10 && lat > 15) return 'europe'; // Portugal/Iceland side
+        if (lat > 35 && lon >= -15 && lon < 45) return 'europe';
+        if (lat > 55 && lon >= 25 && lon < 45) return 'europe'; // Scandinavia/Baltics
+        if (lat > -40 && lat < 40 && lon >= 15 && lon < 55) return lon < 45 && lat < 35 ? 'africa' : 'mideast';
+        if (lat < -10 && lon > 100) return 'oceania';
+        if (lon >= 55 || (lon < -130 && lat < 30)) return 'asia';
+        return 'europe';
+      }
       function hash(str) {
         let h = 2166136261;
         for (let i=0;i<str.length;i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
@@ -815,7 +835,10 @@
         const distKm = Math.acos(dot) * 6371;
         const durMin = Math.round(distKm / 820 * 60 + 45);
         const h = hash(from.key + '→' + to.key);
-        const airline = AIRLINES[h % AIRLINES.length];
+        /* Pick airline from departure region's pool */
+        const reg = regionOf(from.v);
+        const pool = AIRLINE_POOLS[reg] || AIRLINE_POOLS.europe;
+        const airline = pool[h % pool.length];
         const flightNum = 100 + ((h >> 8) % 1899);
         const takeoffMin = ((h >> 4) % 48) * 30; // half-hour increments
         const landingMin = takeoffMin + durMin;
@@ -1009,7 +1032,11 @@
         entries.forEach((e, i) => {
           wantedKeys.add(e.from.key);
           let card = existing.get(e.from.key);
-          if (!card) {
+          if (card) {
+            card.classList.remove('removing');
+            card.style.maxHeight = '';
+            card.style.animation = 'none';
+          } else {
             card = document.createElement('div');
             card.className = 'flight-card placeholder';
             card.dataset.fromKey = e.from.key;
@@ -1093,8 +1120,14 @@
                 const toKey = card.dataset.toKey;
                 const idx = trips.findIndex(tr => tr.key === toKey);
                 if (idx !== -1) {
-                  trips.splice(idx, 1);
-                  renderFlights();
+                  /* Capture current height then animate out */
+                  card.style.maxHeight = card.offsetHeight + 'px';
+                  void card.offsetWidth; /* force reflow */
+                  card.classList.add('removing');
+                  setTimeout(() => {
+                    trips.splice(idx, 1);
+                    renderFlights();
+                  }, 350);
                 }
               });
             }
