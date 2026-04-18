@@ -394,6 +394,40 @@
       color: rgba(255,180,180,0.95);
     }
 
+
+    /* Country hover card on globe */
+    .country-card {
+      position: absolute;
+      z-index: 10;
+      background: rgba(46,50,60,0.92);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 8px 12px;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity .18s ease, transform .22s cubic-bezier(.22,1,.36,1);
+      white-space: nowrap;
+    }
+    .country-card.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .cc-name {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(235,238,245,0.95);
+    }
+    .cc-sub {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      letter-spacing: .06em;
+      color: rgba(235,238,245,0.45);
+      margin-top: 2px;
+    }
+
     /* Total cost footer */
     .side-footer {
       padding: 14px 20px;
@@ -1150,8 +1184,9 @@
           setSuggestions(input.value.trim().toUpperCase());
           syncBtnState();
         });
+        let _skipBlur = false;
         input.addEventListener('blur', () => {
-          setTimeout(() => { list.innerHTML = ''; }, 150);
+          setTimeout(() => { if (!_skipBlur) list.innerHTML = ''; _skipBlur = false; }, 150);
         });
         list.addEventListener('mousedown', () => { setTimeout(syncBtnState, 0); });
 
@@ -1234,6 +1269,30 @@
 
         refreshUiForMode();
 
+        /* Expose function for globe click → show country-filtered suggestions */
+        window.showCountryCities = function(cities) {
+          _skipBlur = true;
+          list.innerHTML = '';
+          input.value = '';
+          input.focus();
+          const taken = plottedKeys();
+          cities.filter(c => !taken.has(c.key)).forEach(c => {
+            const li = document.createElement('li');
+            li.textContent = c.name;
+            li.addEventListener('mousedown', e => {
+              e.preventDefault();
+              input.value = c.name;
+              list.innerHTML = '';
+              syncBtnState();
+              btn.click();
+            });
+            list.appendChild(li);
+          });
+        };
+
+        /* Expose function to clear selected country when search loses focus */
+        window.clearSelectedCountry = function() {};
+
         document.getElementById('side-reset').addEventListener('click', () => {
           const panel = document.querySelector('.side-panel');
           if (!home || panel.classList.contains('evaporating')) return;
@@ -1282,6 +1341,236 @@
           }
         }
 
+        /* ── Country identification for hover highlighting ── */
+        // 1. Flood-fill connected components on the land texture
+        const landMask = new Uint8Array(TW * TH);
+        for (let i = 0; i < TW * TH; i++) landMask[i] = pix[i * 4] > 60 ? 1 : 0;
+
+        const compGrid = new Int16Array(TW * TH).fill(-1);
+        let numComp = 0;
+        for (let y = 0; y < TH; y++) {
+          for (let x = 0; x < TW; x++) {
+            const idx = y * TW + x;
+            if (!landMask[idx] || compGrid[idx] !== -1) continue;
+            const queue = [idx]; compGrid[idx] = numComp; let head = 0;
+            while (head < queue.length) {
+              const ci = queue[head++], cx = ci % TW, cy = (ci - cx) / TW;
+              const nb = [[cx > 0 ? cx-1 : TW-1, cy],[cx < TW-1 ? cx+1 : 0, cy],[cx, cy-1],[cx, cy+1]];
+              for (const [nx, ny] of nb) {
+                if (ny < 0 || ny >= TH) continue;
+                const ni = ny * TW + nx;
+                if (landMask[ni] && compGrid[ni] === -1) { compGrid[ni] = numComp; queue.push(ni); }
+              }
+            }
+            numComp++;
+          }
+        }
+
+        // 2. Country seed points — [countryId, lat, lon] (multiple seeds per large country)
+        const SEEDS = [
+          [1,56,-106],[1,62,-120],[1,50,-80],[1,68,-95],
+          [2,39,-98],[2,34,-118],[2,43,-72],[2,64,-153],[2,21,-157],
+          [3,24,-102],[3,19,-99],
+          [4,15,-90],[5,14,-87],[6,13,-85],[7,10,-84],[8,9,-80],
+          [9,22,-80],[10,18,-77],[11,19,-72],[12,19,-70],
+          [13,5,-74],[13,7,-73],[14,8,-66],
+          [15,5,-59],[16,4,-56],
+          [17,-1,-78],[18,-10,-76],[18,-6,-77],
+          [19,-17,-65],
+          [20,-8,-50],[20,-15,-48],[20,-22,-50],[20,-3,-60],
+          [21,-25,-58],[22,-33,-56],
+          [23,-35,-64],[23,-28,-65],
+          [24,-35,-71],[24,-45,-72],
+          [25,54,-2],[26,53,-8],
+          [27,65,14],[27,60,8],
+          [28,62,16],[28,58,15],
+          [29,64,26],[29,61,24],
+          [30,56,10],
+          [31,47,2],[31,44,1],
+          [32,40,-4],[32,38,-4],
+          [33,39,-8],
+          [34,51,10],[34,48,10],
+          [35,42,12],[35,44,11],
+          [36,52,5],
+          [37,47,8],
+          [38,50,15],[38,52,20],
+          [39,47,20],[40,46,25],[41,43,25],
+          [42,39,22],[43,44,20],[44,46,15],
+          [45,59,25],[46,57,24],[47,55,24],
+          [48,49,32],[48,48,37],
+          [49,54,28],
+          [50,56,38],[50,55,73],[50,56,93],[50,62,130],[50,64,40],[50,68,70],
+          [51,39,32],[51,39,36],
+          [52,33,44],[53,33,54],[53,36,52],
+          [54,25,45],[54,20,45],
+          [55,15,44],[56,23,57],
+          [57,35,39],[58,32,36],
+          [59,48,68],[59,43,77],
+          [60,41,60],[61,41,65],
+          [62,33,66],
+          [63,42,44],[64,40,50],
+          [65,32,-5],
+          [66,28,2],[66,35,3],
+          [67,34,9],
+          [68,28,17],[68,32,14],
+          [69,27,31],[69,29,31],
+          [70,15,32],[70,13,30],
+          [71,9,38],[71,7,40],
+          [72,1,37],[73,-7,35],[74,2,32],
+          [75,-3,24],[75,0,22],
+          [76,-9,18],[77,-15,28],[78,-20,30],
+          [79,-29,25],[79,-32,23],
+          [80,-22,17],
+          [81,-15,35],[82,-19,47],
+          [83,10,8],[83,8,4],
+          [84,17,-2],[84,20,0],
+          [85,15,19],[85,13,16],
+          [86,7,12],[87,6,-2],[87,8,-5],
+          [88,14,-14],[89,22,-10],
+          [90,5,32],[91,2,45],
+          [92,30,70],[92,26,68],
+          [93,22,80],[93,16,77],[93,28,77],
+          [94,28,84],[95,24,90],[96,8,81],
+          [97,20,96],
+          [98,15,101],[98,8,99],
+          [99,19,103],
+          [100,16,106],[100,11,107],
+          [101,12,105],
+          [102,4,103],
+          [103,-3,115],[103,-7,110],[103,0,110],
+          [104,12,122],
+          [105,35,105],[105,40,115],[105,30,110],[105,42,87],
+          [106,46,105],
+          [107,37,127],[108,40,126],
+          [109,37,140],[109,34,135],
+          [110,24,121],
+          [111,-25,134],[111,-33,148],[111,-22,145],
+          [112,-42,172],[112,-38,176],
+          [113,-6,147],
+          [114,72,-42],
+          [115,65,-19],
+        ];
+
+        // Map each seed to its connected component
+        const seedComps = SEEDS.map(([, lat, lon]) => {
+          const sx = Math.min(TW-1, Math.floor(((lon+180)/360)*TW));
+          const sy = Math.min(TH-1, Math.floor((1-(lat+90)/180)*TH));
+          return compGrid[sy * TW + sx];
+        });
+
+        // 3. Build country grid — each land pixel gets nearest same-component seed's ID
+        const countryGrid = new Uint8Array(TW * TH);
+        for (let y = 0; y < TH; y++) {
+          const lat = 90 - (y / TH) * 180;
+          const cosLat = Math.cos(lat * Math.PI / 180);
+          for (let x = 0; x < TW; x++) {
+            const idx = y * TW + x;
+            if (!landMask[idx]) continue;
+            const comp = compGrid[idx];
+            const lon = (x / TW) * 360 - 180;
+            let bestD = Infinity, bestId = 0;
+            for (let si = 0; si < SEEDS.length; si++) {
+              if (seedComps[si] !== comp) continue;
+              const dlat = lat - SEEDS[si][1];
+              let dlon = lon - SEEDS[si][2];
+              if (dlon > 180) dlon -= 360; if (dlon < -180) dlon += 360;
+              const d = dlat*dlat + (dlon*cosLat)*(dlon*cosLat);
+              if (d < bestD) { bestD = d; bestId = SEEDS[si][0]; }
+            }
+            countryGrid[idx] = bestId;
+          }
+        }
+
+        // 4. Assign each globe dot a country ID
+        const globeCountries = new Uint8Array(globePts.length);
+        for (let i = 0; i < globePts.length; i++) {
+          const [gx, gy, gz] = globePts[i];
+          const lat = Math.asin(gy) * 180 / Math.PI;
+          const lon = Math.atan2(gz, gx) * 180 / Math.PI;
+          const tx = Math.min(TW-1, Math.floor(((lon+180)/360)*TW));
+          const ty = Math.min(TH-1, Math.floor((1-(lat+90)/180)*TH));
+          globeCountries[i] = countryGrid[ty * TW + tx];
+        }
+
+        // 5. Country names + city→country mapping for hover card
+        const COUNTRY_NAMES = {
+          1:'Canada',2:'United States',3:'Mexico',4:'Guatemala',5:'Honduras',
+          6:'Nicaragua',7:'Costa Rica',8:'Panama',9:'Cuba',10:'Jamaica',
+          11:'Haiti',12:'Dominican Republic',13:'Colombia',14:'Venezuela',
+          15:'Guyana',16:'Suriname',17:'Ecuador',18:'Peru',19:'Bolivia',
+          20:'Brazil',21:'Paraguay',22:'Uruguay',23:'Argentina',24:'Chile',
+          25:'United Kingdom',26:'Ireland',27:'Norway',28:'Sweden',29:'Finland',
+          30:'Denmark',31:'France',32:'Spain',33:'Portugal',34:'Germany',
+          35:'Italy',36:'Netherlands',37:'Switzerland',38:'Poland',39:'Hungary',
+          40:'Romania',41:'Bulgaria',42:'Greece',43:'Serbia',44:'Croatia',
+          45:'Estonia',46:'Latvia',47:'Lithuania',48:'Ukraine',49:'Belarus',
+          50:'Russia',51:'Turkey',52:'Iraq',53:'Iran',54:'Saudi Arabia',
+          55:'Yemen',56:'UAE',57:'Syria',58:'Jordan',59:'Kazakhstan',
+          60:'Turkmenistan',61:'Uzbekistan',62:'Afghanistan',63:'Georgia',
+          64:'Azerbaijan',65:'Morocco',66:'Algeria',67:'Tunisia',68:'Libya',
+          69:'Egypt',70:'Sudan',71:'Ethiopia',72:'Kenya',73:'Tanzania',
+          74:'Uganda',75:'DR Congo',76:'Angola',77:'Zambia',78:'Zimbabwe',
+          79:'South Africa',80:'Namibia',81:'Mozambique',82:'Madagascar',
+          83:'Nigeria',84:'Mali',85:'Chad',86:'Cameroon',87:'Ghana',
+          88:'Senegal',89:'Mauritania',90:'South Sudan',91:'Somalia',
+          92:'Pakistan',93:'India',94:'Nepal',95:'Bangladesh',96:'Sri Lanka',
+          97:'Myanmar',98:'Thailand',99:'Laos',100:'Vietnam',101:'Cambodia',
+          102:'Malaysia',103:'Indonesia',104:'Philippines',105:'China',
+          106:'Mongolia',107:'South Korea',108:'North Korea',109:'Japan',
+          110:'Taiwan',111:'Australia',112:'New Zealand',113:'Papua New Guinea',
+          114:'Greenland',115:'Iceland',
+        };
+
+        // Map each city to its country ID
+        const cityCountryIds = CITY_LIST.map(c => {
+          const lat = Math.asin(c.v[1]) * 180 / Math.PI;
+          const lon = Math.atan2(c.v[2], c.v[0]) * 180 / Math.PI;
+          const cx = Math.min(TW-1, Math.floor(((lon+180)/360)*TW));
+          const cy = Math.min(TH-1, Math.floor((1-(lat+90)/180)*TH));
+          return countryGrid[cy * TW + cx];
+        });
+
+        // Pre-build city lists per country: { countryId → [{name, iata}] }
+        const citiesByCountry = {};
+        for (let ci = 0; ci < CITY_LIST.length; ci++) {
+          const cid = cityCountryIds[ci];
+          if (!cid) continue;
+          if (!citiesByCountry[cid]) citiesByCountry[cid] = [];
+          citiesByCountry[cid].push({ name: CITY_LIST[ci].name, iata: iataFor(CITY_LIST[ci].name) });
+        }
+
+        // Country hover card element
+        const countryCard = document.createElement('div');
+        countryCard.className = 'country-card';
+        countryCard.innerHTML = '<div class="cc-name"></div><div class="cc-sub"></div>';
+        document.querySelector('.art-panel').appendChild(countryCard);
+        let lastCardCountry = -1;
+
+        let hoveredCountry = -1;
+        let selectedCountry = -1;
+        // Click globe → select country, show its cities in search dropdown
+        canvas.addEventListener('click', () => {
+          if (hoveredCountry > 0 && citiesByCountry[hoveredCountry]) {
+            selectedCountry = hoveredCountry;
+            const cities = citiesByCountry[hoveredCountry].map(c => {
+              const entry = CITY_DB[c.name.toUpperCase()];
+              return entry || { name: c.name, key: c.name.toUpperCase() };
+            });
+            window.showCountryCities(cities);
+          }
+        });
+
+        // Clear selected country when search input loses focus or user types
+        const searchInput = document.getElementById('globe-search-input');
+        searchInput.addEventListener('blur', () => {
+          setTimeout(() => {
+            if (document.activeElement !== searchInput) selectedCountry = -1;
+          }, 200);
+        });
+        searchInput.addEventListener('input', () => {
+          if (searchInput.value.trim()) selectedCountry = -1;
+        });
+
         (function draw() {
           if (W === 0 || H === 0) { requestAnimationFrame(draw); return; }
           ctx.clearRect(0, 0, W, H);
@@ -1296,52 +1585,73 @@
           const dpr    = devicePixelRatio;
           const sc     = Math.min(W, H) * 0.33;
           const ang    = INIT_Y + t;
-          const hoverR = 38 * dpr;
           function rotate(v) { return rX(rY(v, ang), INIT_X); }
           const rTor  = rotate(toronto);
           const torPt = orth(rTor, sc);
 
-          /* Cursor glow */
+          /* Raycast mouse → sphere to find hovered country */
+          hoveredCountry = -1;
           if (mouseX > 0) {
-            const grd = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, hoverR * 1.4);
-            grd.addColorStop(0,   'rgba(30,45,80,0.13)');
-            grd.addColorStop(0.5, 'rgba(30,45,80,0.06)');
-            grd.addColorStop(1,   'rgba(30,45,80,0)');
-            ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
+            const rx = (W/2 - mouseX) / sc;
+            const ry = (H/2 - mouseY) / sc;
+            const rr = rx*rx + ry*ry;
+            if (rr <= 1) {
+              const rz = Math.sqrt(1 - rr);
+              const ur = rX([rx, ry, rz], -INIT_X);
+              const uv = rY(ur, -ang);
+              const lat = Math.asin(Math.max(-1, Math.min(1, uv[1]))) * 180 / Math.PI;
+              const lon = Math.atan2(uv[2], uv[0]) * 180 / Math.PI;
+              const hx = Math.min(TW-1, Math.floor(((lon+180)/360)*TW));
+              const hy = Math.min(TH-1, Math.floor((1-(lat+90)/180)*TH));
+              const cid = countryGrid[hy * TW + hx];
+              if (cid > 0) hoveredCountry = cid;
+            }
+          }
+
+          /* Cursor style */
+          canvas.style.cursor = (hoveredCountry > 0 && (citiesByCountry[hoveredCountry] || []).length > 0) ? 'pointer' : 'default';
+
+          /* Country hover card */
+          if (hoveredCountry > 0 && COUNTRY_NAMES[hoveredCountry]) {
+            if (lastCardCountry !== hoveredCountry) {
+              lastCardCountry = hoveredCountry;
+              countryCard.querySelector('.cc-name').textContent = COUNTRY_NAMES[hoveredCountry];
+              const n = (citiesByCountry[hoveredCountry] || []).length;
+              countryCard.querySelector('.cc-sub').textContent = n > 0 ? `${n} airport${n > 1 ? 's' : ''}` : 'No airports';
+            }
+            const mx = mouseX / dpr, my = mouseY / dpr;
+            const panelW = canvas.parentElement.clientWidth;
+            const cw = countryCard.offsetWidth || 100;
+            const ch = countryCard.offsetHeight || 40;
+            let cx = mx + 16, cy = my - ch - 12;
+            if (cx + cw > panelW - 8) cx = mx - cw - 16;
+            if (cy < 8) cy = my + 16;
+            countryCard.style.left = cx + 'px';
+            countryCard.style.top  = cy + 'px';
+            countryCard.classList.add('visible');
+          } else {
+            countryCard.classList.remove('visible');
+            lastCardCountry = -1;
           }
 
           /* Land dots */
-          for (const v of globePts) {
+          for (let gi = 0; gi < globePts.length; gi++) {
+            const v = globePts[gi];
             const r = rotate(v);
             if (r[2] < 0) continue;
             const alpha = Math.pow(r[2], 0.55) * 0.78;
             const [px, py] = orth(r, sc);
-            const dx = px - mouseX, dy = py - mouseY;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            const glow = mouseX > 0 ? Math.max(0, 1 - dist / hoverR) : 0;
-            let renderX = px, renderY = py, rippleCrest = 0;
-            if (mouseX > 0 && dist < hoverR * 3.2) {
-              const env  = Math.max(0, 1 - dist / (hoverR * 2.8));
-              const freq = 0.044 / dpr;
-              const amp  = 28 * dpr * env;
-              const w1   = Math.sin(dist * freq - t * 7.2);
-              const w2   = Math.sin(dist * freq * 1.65 - t * 5.4 + 1.5) * 0.55;
-              const w3   = Math.sin(dist * freq * 0.55 - t * 3.0 + 0.8) * 0.30;
-              const disp = (w1 + w2 + w3) * amp;
-              const nx = dist > 0.5 ? dx/dist : 0, ny = dist > 0.5 ? dy/dist : 0;
-              renderX = px + nx * disp; renderY = py + ny * disp;
-              rippleCrest = Math.max(0, disp) / (amp * 1.5 + 0.001);
-            }
-            const active = glow > 0.02 || rippleCrest > 0.08;
-            if (active) {
-              ctx.shadowBlur  = (10*glow + 7*rippleCrest) * dpr;
-              ctx.shadowColor = `rgba(30,45,80,${Math.max(glow,rippleCrest)*0.6})`;
-              ctx.fillStyle   = `rgba(15,20,40,${Math.min(1, alpha + glow*0.72 + rippleCrest*0.48)})`;
-              ctx.beginPath(); ctx.arc(renderX, renderY, (1.15 + glow*1.4 + rippleCrest*0.9)*dpr, 0, Math.PI*2); ctx.fill();
+            const cid = globeCountries[gi];
+            const lit = (hoveredCountry > 0 && cid === hoveredCountry) || (selectedCountry > 0 && cid === selectedCountry);
+            if (lit) {
+              ctx.shadowBlur  = 10 * dpr;
+              ctx.shadowColor = 'rgba(50,140,255,0.7)';
+              ctx.fillStyle   = `rgba(50,140,255,${Math.min(1, alpha + 0.45)})`;
+              ctx.beginPath(); ctx.arc(px, py, 1.9*dpr, 0, Math.PI*2); ctx.fill();
               ctx.shadowBlur = 0;
             } else {
               ctx.fillStyle = `rgba(35,42,65,${alpha})`;
-              ctx.beginPath(); ctx.arc(renderX, renderY, 1.15*dpr, 0, Math.PI*2); ctx.fill();
+              ctx.beginPath(); ctx.arc(px, py, 1.15*dpr, 0, Math.PI*2); ctx.fill();
             }
           }
 
