@@ -1003,6 +1003,7 @@
         const showPanel = !!home;
         panel.classList.toggle('visible', showPanel);
         wrap.classList.toggle('has-trip', showPanel);
+        if (showPanel) panel.classList.remove('evaporating');
 
         if (!home) {
           list.innerHTML = '';
@@ -1342,7 +1343,6 @@
             document.getElementById('globe-search-bar').classList.add('pulse');
             refreshUiForMode();
             renderFlights();
-            panel.classList.remove('evaporating');
           }, 380);
         });
       })();
