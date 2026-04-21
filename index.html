@@ -1006,7 +1006,7 @@
 
         if (!home) {
           list.innerHTML = '';
-          list.appendChild(empty);
+          if (empty) list.appendChild(empty);
           totalEl.textContent = '—';
           totalEl.classList.add('hidden');
           return;
